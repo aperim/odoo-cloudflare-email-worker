@@ -24,37 +24,6 @@
  */
 
 /**
- * A Cloudflare Worker environment interface. Extend as needed for environment variables.
- */
-interface Env {
-	// The following environment variables can be defined to configure Odoo and domain collapsing:
-	ODOO_DATABASE?: string;
-	ODOO_USERID?: string;
-	ODOO_PASSWORD?: string;
-	ODOO_HOST?: string;
-	ODOO_PORT?: string;
-	ODOO_PROTOCOL?: string;
-	DOMAIN_COLLAPSE_MAPPING?: string;
-}
-
-/**
- * Representation of an inbound Cloudflare Email.
- */
-interface ForwardableEmailMessage {
-	headers: Map<string, string>;
-	raw: ReadableStream<Uint8Array>;
-	rawSize: number;
-	setReject(reason: string): void;
-}
-
-/**
- * The ExecutionContext provided by Cloudflare Workers when handling an email.
- */
-interface ExecutionContext {
-	waitUntil(promise: Promise<unknown>): void;
-}
-
-/**
  * Describes the result of processing within each pipeline processor.
  */
 interface ProcessingResult {
@@ -84,9 +53,9 @@ interface EmailPipelineContext {
 /**
  * Asynchronously converts a ReadableStream into a Uint8Array.
  *
- * @param {ReadableStream<Uint8Array>} stream The stream to convert.
- * @param {number} streamSize The expected size of the stream.
- * @return {Promise<Uint8Array>} The resulting bytes from the stream.
+ * @param stream The stream to convert.
+ * @param streamSize The expected size of the stream.
+ * @return The resulting bytes from the stream.
  */
 async function streamToArrayBuffer(stream: ReadableStream<Uint8Array>, streamSize: number): Promise<Uint8Array> {
 	const result = new Uint8Array(streamSize);
@@ -94,7 +63,6 @@ async function streamToArrayBuffer(stream: ReadableStream<Uint8Array>, streamSiz
 	const reader = stream.getReader();
 
 	while (true) {
-		// eslint-disable-next-line no-await-in-loop
 		const { done, value } = await reader.read();
 		if (done || !value) {
 			break;
@@ -109,8 +77,8 @@ async function streamToArrayBuffer(stream: ReadableStream<Uint8Array>, streamSiz
 /**
  * Converts an ArrayBuffer/Uint8Array to a base64 encoded string.
  *
- * @param {ArrayBuffer | Uint8Array} arrayBuffer The buffer to convert.
- * @return {string} The base64 encoded string.
+ * @param arrayBuffer The buffer to convert.
+ * @return The base64 encoded string.
  */
 function base64ArrayBuffer(arrayBuffer: ArrayBuffer | Uint8Array): string {
 	const encodings = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -164,7 +132,7 @@ class BaseEmailProcessor {
 	/**
 	 * Creates a new BaseEmailProcessor.
 	 *
-	 * @param {EmailPipelineContext} context The pipeline context shared across processors.
+	 * @param context The pipeline context shared across processors.
 	 */
 	constructor(context: EmailPipelineContext) {
 		this.context = context;
@@ -173,7 +141,7 @@ class BaseEmailProcessor {
 	/**
 	 * Process method to be overridden by subclasses.
 	 *
-	 * @return {Promise<ProcessingResult>} The result of processing.
+	 * @return The result of processing.
 	 */
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	async process(): Promise<ProcessingResult> {
@@ -187,7 +155,6 @@ class BaseEmailProcessor {
 class SpamCheckProcessor extends BaseEmailProcessor {
 	/**
 	 * @override
-	 * @return {Promise<ProcessingResult>}
 	 */
 	async process(): Promise<ProcessingResult> {
 		const { message } = this.context;
@@ -304,7 +271,6 @@ class SpamCheckProcessor extends BaseEmailProcessor {
 class ParsingProcessor extends BaseEmailProcessor {
 	/**
 	 * @override
-	 * @return {Promise<ProcessingResult>}
 	 */
 	async process(): Promise<ProcessingResult> {
 		const { message } = this.context;
@@ -340,7 +306,6 @@ class ParsingProcessor extends BaseEmailProcessor {
 class DomainCollapseProcessor extends BaseEmailProcessor {
 	/**
 	 * @override
-	 * @return {Promise<ProcessingResult>}
 	 */
 	async process(): Promise<ProcessingResult> {
 		const { env, parsedEmail } = this.context;
@@ -379,17 +344,21 @@ class DomainCollapseProcessor extends BaseEmailProcessor {
 					const domainLower = domainPart.toLowerCase();
 					if (domainMap[domainLower]) {
 						changedCount++;
-						// Replace entire address
 						return formatAddress(displayName, domainMap[domainLower]);
 					}
 					return addrStr;
 				});
-				return { ...header, value: transformed.join(', ') };
+				const newValue = transformed.join(', ');
+				return {
+					...header,
+					value: newValue,
+					raw: `${header.name}: ${newValue}`,
+				};
 			}
 			return header;
 		});
 
-		this.context.parsedEmail.headers = updatedHeaders;
+		if (updatedHeaders && this.context.parsedEmail) this.context.parsedEmail.headers = updatedHeaders;
 
 		if (changedCount > 0) {
 			console.log(`[DomainCollapseProcessor] Rewrote ${changedCount} addresses in To/Cc/Bcc headers.`);
@@ -408,7 +377,6 @@ class DomainCollapseProcessor extends BaseEmailProcessor {
 class SubaddressingProcessor extends BaseEmailProcessor {
 	/**
 	 * @override
-	 * @return {Promise<ProcessingResult>}
 	 */
 	async process(): Promise<ProcessingResult> {
 		const { parsedEmail } = this.context;
@@ -417,15 +385,14 @@ class SubaddressingProcessor extends BaseEmailProcessor {
 			return { canContinue: true };
 		}
 
-		// Strip subaddressing from "To" header, capture subaddressTag
 		const { subaddressTag, updatedHeaders } = processSubaddressing(parsedEmail.headers);
-
-		// If subaddressTag found, prepend [tag] to subject if not already present
 		const finalHeaders = prependSubjectTag(updatedHeaders, subaddressTag);
-		this.context.parsedEmail.headers = finalHeaders;
 
+		if (finalHeaders && this.context.parsedEmail) this.context.parsedEmail.headers = finalHeaders;
 		if (subaddressTag) {
-			console.log(`[SubaddressingProcessor] Removed subaddress tag: ${subaddressTag}, updated "To" header and possibly adjusted subject.`);
+			console.log(
+				`[SubaddressingProcessor] Removed subaddress tag: ${subaddressTag}, updated "To" header and possibly adjusted subject.`
+			);
 		} else {
 			console.log('[SubaddressingProcessor] No subaddressing found.');
 		}
@@ -440,7 +407,6 @@ class SubaddressingProcessor extends BaseEmailProcessor {
 class PreDeliveryProcessor extends BaseEmailProcessor {
 	/**
 	 * @override
-	 * @return {Promise<ProcessingResult>}
 	 */
 	async process(): Promise<ProcessingResult> {
 		const { parsedEmail } = this.context;
@@ -464,7 +430,6 @@ class PreDeliveryProcessor extends BaseEmailProcessor {
 class DeliveryProcessor extends BaseEmailProcessor {
 	/**
 	 * @override
-	 * @return {Promise<ProcessingResult>}
 	 */
 	async process(): Promise<ProcessingResult> {
 		const { env, finalRawEmail } = this.context;
@@ -475,7 +440,6 @@ class DeliveryProcessor extends BaseEmailProcessor {
 
 		console.log('[DeliveryProcessor] Sending email to CRM...');
 
-		// Gather the necessary options from environment variables
 		const options = {
 			database: env.ODOO_DATABASE || 'company',
 			userid: env.ODOO_USERID || '2',
@@ -516,7 +480,7 @@ class CrmServerHandler {
 	/**
 	 * Creates a new CrmServerHandler with connection options.
 	 *
-	 * @param {{ database: string; userid: string; password: string; host: string; port: string; protocol: string }} options CRM connection options.
+	 * @param options CRM connection options.
 	 */
 	constructor(options: {
 		database: string;
@@ -532,8 +496,7 @@ class CrmServerHandler {
 	/**
 	 * Sends raw email data to Odoo via XML-RPC.
 	 *
-	 * @param {Uint8Array} rawEmail The raw email data.
-	 * @return {Promise<void>}
+	 * @param rawEmail The raw email data.
 	 */
 	async sendEmail(rawEmail: Uint8Array): Promise<void> {
 		const url = `${this.options.protocol}://${this.options.host}:${this.options.port}/xmlrpc/2/object`;
@@ -584,7 +547,6 @@ class CrmServerHandler {
 					host: this.options.host,
 					port: this.options.port,
 					protocol: this.options.protocol,
-					// Omitting password from logs for security reasons
 				},
 			});
 			const msg = error instanceof Error ? error.message : String(error);
@@ -595,12 +557,10 @@ class CrmServerHandler {
 	/**
 	 * Validates the CRM server response, robustly capturing the faultString from Odoo.
 	 *
-	 * @param {Response} response The fetch Response object.
-	 * @param {string} data The response body text.
-	 * @return {Promise<void>}
+	 * @param response The fetch Response object.
+	 * @param data The response body text.
 	 */
 	private async validateResponse(response: Response, data: string): Promise<void> {
-		// Handle HTTP errors and log the entire response in base64.
 		if (!response.ok) {
 			console.error(`HTTP Error: ${response.status} ${response.statusText}`);
 			console.error(
@@ -609,21 +569,16 @@ class CrmServerHandler {
 			throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
 		}
 
-		// Check if the response contains a fault (error-level XML).
 		if (data.includes('<fault>')) {
-			// Because Odoo's fault string is inside <member> <name>faultString</name> <value><string>...</string></value>,
-			// we match for that segment rather than <faultString>...</faultString>.
 			const faultStringRegex = /<name>\s*faultString\s*<\/name>\s*<value>\s*<string>\s*([\s\S]*?)\s*<\/string>/i;
 			const faultStringMatch = data.match(faultStringRegex);
 			const faultString = faultStringMatch ? faultStringMatch[1].trim() : 'Unknown fault';
 
-			// Specific handling for "ValueError: No possible route found for incoming message"
 			if (faultString.includes('ValueError: No possible route found for incoming message')) {
 				console.error(`CRM route error: ${faultString}`);
 				throw new Error('Mailbox not found or no valid route. Please check the mail alias or CRM configuration.');
 			}
 
-			// Unknown fault type. Log entire response in base64 for debugging.
 			console.error(`Fault response from API: ${faultString}`);
 			console.error(
 				`[CrmServerHandler] Full response data (base64): ${base64ArrayBuffer(new TextEncoder().encode(data))}`
@@ -631,7 +586,6 @@ class CrmServerHandler {
 			throw new Error(`CRM Error: ${faultString}`);
 		}
 
-		// Check for meaningful return data in the XML (int or boolean).
 		const intMatch = data.match(/<int>\s*(\d+)\s*<\/int>/i);
 		const booleanMatch = data.match(/<boolean>\s*(\d)\s*<\/boolean>/i);
 
@@ -654,7 +608,6 @@ class CrmServerHandler {
 				console.log('Email accepted by CRM with boolean true.');
 			}
 		} else {
-			// Unknown or unexpected response format. Log entire response in base64 for debugging.
 			console.warn('[CrmServerHandler] Unexpected response format from CRM.');
 			console.warn(
 				`[CrmServerHandler] Full response data (base64): ${base64ArrayBuffer(new TextEncoder().encode(data))}`
@@ -674,14 +627,11 @@ class CrmServerHandler {
  * with { headers, body }, where headers is an array of { raw, name, value },
  * and body is a Uint8Array.
  *
- * @param {Uint8Array} rawEmail The raw email data.
- * @return {{ headers: Array<{ raw: string; name: string; value: string }>, body: Uint8Array }}
+ * @param rawEmail The raw email data.
+ * @return An object with { headers, body }.
  */
 function parseEmail(rawEmail: Uint8Array): ParsedEmail {
-	// Convert to string
-	const text = new TextDecoder('utf-8', { fatal: false }).decode(rawEmail);
-
-	// Normalise line breaks
+	const text = new TextDecoder('utf-8', { fatal: false, ignoreBOM: false }).decode(rawEmail);
 	const allLines = text.replace(/\r?\n/g, '\n').split('\n');
 
 	const headers: Array<{ raw: string; name: string; value: string }> = [];
@@ -693,7 +643,6 @@ function parseEmail(rawEmail: Uint8Array): ParsedEmail {
 	for (const line of allLines) {
 		if (isHeaderSection) {
 			if (line.trim() === '') {
-				// end of headers
 				if (currentHeaderName) {
 					headers.push({
 						raw: `${currentHeaderName}: ${currentHeaderValue}`,
@@ -705,11 +654,9 @@ function parseEmail(rawEmail: Uint8Array): ParsedEmail {
 				continue;
 			}
 
-			// If it starts with whitespace => folded header
 			if (/^[ \t]/.test(line)) {
 				currentHeaderValue += ` ${line.trim()}`;
 			} else {
-				// New header
 				if (currentHeaderName) {
 					headers.push({
 						raw: `${currentHeaderName}: ${currentHeaderValue}`,
@@ -722,7 +669,6 @@ function parseEmail(rawEmail: Uint8Array): ParsedEmail {
 					currentHeaderName = line.substring(0, idx).trim();
 					currentHeaderValue = line.substring(idx + 1).trim();
 				} else {
-					// Malformed header line
 					currentHeaderName = line.trim();
 					currentHeaderValue = '';
 				}
@@ -732,7 +678,6 @@ function parseEmail(rawEmail: Uint8Array): ParsedEmail {
 		}
 	}
 
-	// If we ended parsing but still had a header in progress
 	if (currentHeaderName && isHeaderSection) {
 		headers.push({
 			raw: `${currentHeaderName}: ${currentHeaderValue}`,
@@ -754,8 +699,8 @@ function parseEmail(rawEmail: Uint8Array): ParsedEmail {
  * Splits a string containing possibly multiple email addresses into an array
  * of address strings. This is a simplistic approach and does not fully comply with RFC 5322.
  *
- * @param {string} headerValue The header value to split.
- * @return {string[]} The array of address strings.
+ * @param headerValue The header value to split.
+ * @return The array of address strings.
  */
 function splitAddresses(headerValue: string): string[] {
 	const parts: string[] = [];
@@ -782,8 +727,8 @@ function splitAddresses(headerValue: string): string[] {
 /**
  * Parses a single address string into display name and address.
  *
- * @param {string} addrStr The raw address string.
- * @return {{ displayName: string, address: string }}
+ * @param addrStr The raw address string.
+ * @return An object with { displayName, address }.
  */
 function parseAddress(addrStr: string): { displayName: string; address: string } {
 	const angleMatch = addrStr.match(/^(.*)<([^>]+)>.*$/);
@@ -792,16 +737,15 @@ function parseAddress(addrStr: string): { displayName: string; address: string }
 		const rawAddr = angleMatch[2].trim();
 		return { displayName: stripQuotes(rawName), address: rawAddr };
 	}
-	// Fallback: assume entire string is the address
 	return { displayName: '', address: addrStr.trim() };
 }
 
 /**
  * Re-serialises address as "Name <address>" or just "address" if no display name.
  *
- * @param {string} displayName Name portion
- * @param {string} address Address portion
- * @return {string}
+ * @param displayName Name portion
+ * @param address Address portion
+ * @return A combined string.
  */
 function formatAddress(displayName: string, address: string): string {
 	if (displayName) {
@@ -813,8 +757,8 @@ function formatAddress(displayName: string, address: string): string {
 /**
  * Removes surrounding quotes if present.
  *
- * @param {string} str
- * @return {string}
+ * @param str Input string
+ * @return Unquoted string
  */
 function stripQuotes(str: string): string {
 	let trimmed = str;
@@ -828,11 +772,11 @@ function stripQuotes(str: string): string {
 }
 
 /**
- * Parse domain collapse map from a string that may be comma or semicolon separated.
- * e.g. "suppliers.example.invalid=suppliers@example.invalid,team.example.invalid=allstaff@example.invalid"
+ * Parse domain collapse map from a single string. May be comma- or semicolon-separated.
+ * Example: "suppliers.example.invalid=suppliers@example.invalid,team.example.invalid=allstaff@example.invalid"
  *
- * @param {string} str The domain map string.
- * @return {Record<string, string>} A mapping of domain -> targetAddress
+ * @param str The domain map string.
+ * @return Mapping of domain -> targetAddress
  */
 function parseDomainCollapseMap(str: string): Record<string, string> {
 	const separators = /[,;]+/;
@@ -841,7 +785,6 @@ function parseDomainCollapseMap(str: string): Record<string, string> {
 	for (const entry of entries) {
 		const eqIndex = entry.indexOf('=');
 		if (eqIndex === -1) {
-			// skip invalid
 			continue;
 		}
 		const domainPart = entry.substring(0, eqIndex).trim().toLowerCase();
@@ -854,15 +797,18 @@ function parseDomainCollapseMap(str: string): Record<string, string> {
 }
 
 /**
- * Removes subaddressing (e.g. local+tag@domain) from the "To" header
- * and returns the subaddressTag if found. Only modifies the first "To" header encountered.
+ * Removes subaddressing (e.g. local+tag@domain) from "To" header
+ * and returns a subaddressTag if found. Only modifies the first "To" header encountered.
  *
- * @param {Array<{ name: string, value: string }>} headers
- * @return {{ subaddressTag: string, updatedHeaders: Array<{ name: string, value: string }> }}
+ * @param headers Original array of headers (with raw/name/value).
+ * @return Object containing subaddressTag and updated headers.
  */
 function processSubaddressing(
-	headers: Array<{ name: string; value: string }>
-): { subaddressTag: string; updatedHeaders: Array<{ name: string; value: string }> } {
+	headers: Array<{ raw: string; name: string; value: string }>
+): {
+	subaddressTag: string;
+	updatedHeaders: Array<{ raw: string; name: string; value: string }>;
+} {
 	let subaddressTag = '';
 	const updatedHeaders = headers.map((h) => {
 		if (h.name.toLowerCase() === 'to') {
@@ -873,18 +819,22 @@ function processSubaddressing(
 				const match = address.match(plusRegex);
 				if (match) {
 					const localPart = match[1];
-					const tag = match[2]; // subaddress portion
+					const tag = match[2];
 					const domainPart = match[3];
-					// Only capture the first tag found
 					if (!subaddressTag) {
 						subaddressTag = tag;
 					}
-					return formatAddress(displayName, `${localPart}@${domainPart}`);
+					const newValue = `${localPart}@${domainPart}`;
+					return formatAddress(displayName, newValue);
 				}
 				return addr;
 			});
 			const newValue = updatedAddressParts.join(', ');
-			return { ...h, value: newValue };
+			return {
+				...h,
+				value: newValue,
+				raw: `${h.name}: ${newValue}`,
+			};
 		}
 		return h;
 	});
@@ -895,14 +845,14 @@ function processSubaddressing(
 /**
  * Prepends "[tag]" to the Subject header if not already present.
  *
- * @param {Array<{ name: string, value: string }>} headers
- * @param {string} tag
- * @return {Array<{ name: string, value: string }>}
+ * @param headers Array of headers (with raw/name/value).
+ * @param tag The subaddressTag to prepend.
+ * @return A new array with updated subject if needed.
  */
 function prependSubjectTag(
-	headers: Array<{ name: string; value: string }>,
+	headers: Array<{ raw: string; name: string; value: string }>,
 	tag: string
-): Array<{ name: string; value: string }> {
+): Array<{ raw: string; name: string; value: string }> {
 	if (!tag) {
 		return headers;
 	}
@@ -910,7 +860,12 @@ function prependSubjectTag(
 	return headers.map((h) => {
 		if (h.name.toLowerCase() === 'subject') {
 			if (!h.value.toLowerCase().includes(bracketTag.toLowerCase())) {
-				return { ...h, value: `${bracketTag} ${h.value}` };
+				const newValue = `${bracketTag} ${h.value}`;
+				return {
+					...h,
+					value: newValue,
+					raw: `${h.name}: ${newValue}`,
+				};
 			}
 		}
 		return h;
@@ -920,12 +875,12 @@ function prependSubjectTag(
 /**
  * Re-serialises headers + body into a Uint8Array with CRLF line endings.
  *
- * @param {Array<{ name: string, value: string }>} headers
- * @param {Uint8Array} body
- * @return {Uint8Array}
+ * @param headers The updated headers
+ * @param body The email body
+ * @return A Uint8Array of the final raw message
  */
 function reSerialiseEmail(
-	headers: Array<{ name: string; value: string }>,
+	headers: Array<{ raw: string; name: string; value: string }>,
 	body: Uint8Array
 ): Uint8Array {
 	const headerLines = headers.map((h) => `${h.name}: ${h.value}`);
@@ -941,13 +896,11 @@ export default {
 	/**
 	 * Cloudflare Worker-style email handler.
 	 *
-	 * @param {ForwardableEmailMessage} message The email message to process.
-	 * @param {Env} env Environment variables (e.g. ODOO credentials, domain collapse mapping).
-	 * @param {ExecutionContext} ctx Execution context.
-	 * @return {Promise<void>}
+	 * @param message The email message to process.
+	 * @param env Environment variables (e.g. ODOO credentials, domain collapse mapping).
+	 * @param ctx Execution context.
 	 */
 	async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
-		// Set up a processing context to share data among processors
 		const context: EmailPipelineContext = {
 			message,
 			env,
@@ -956,7 +909,6 @@ export default {
 			finalRawEmail: null,
 		};
 
-		// Ordered list of processors
 		const processors = [
 			new SpamCheckProcessor(context),
 			new ParsingProcessor(context),
@@ -966,26 +918,26 @@ export default {
 			new DeliveryProcessor(context),
 		];
 
-		// Run each processor in sequence
 		for (const processor of processors) {
 			try {
-				// eslint-disable-next-line no-await-in-loop
 				const result = await processor.process();
 				if (!result.canContinue) {
+					const constructorRef = processor.constructor as Function & { name?: string };
+					const constructorName = constructorRef.name || 'Unknown';
 					console.warn(
-						`Email rejected by ${processor.constructor.name}: ${result.rejectReason || 'No reason'}`
+						`Email rejected by ${constructorName}: ${result.rejectReason || 'No reason'}`
 					);
 					message.setReject(result.rejectReason || 'Message rejected by processor.');
-					return; // stop processing
+					return;
 				}
 			} catch (err) {
-				// Log the error but do not stop the chain, unless the message was explicitly rejected
-				console.error(`Error in ${processor.constructor.name}`, err);
+				const constructorRef = processor.constructor as Function & { name?: string };
+				const constructorName = constructorRef.name || 'Unknown';
+				console.error(`Error in ${constructorName}`, err);
 			}
 		}
 
-		// If we reach here successfully, the DeliveryProcessor did not reject or fail.
-		// The email has presumably been delivered to CRM.
+		// If we reach here successfully, the DeliveryProcessor didn't reject or fail.
 		console.log('Email processed successfully through all processors.');
 	},
-};
+} satisfies ExportedHandler<Env>;

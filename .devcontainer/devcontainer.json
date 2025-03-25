@@ -3,7 +3,7 @@
 {
 	"name": "Cloudflare Odoo Email Worker",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "mcr.microsoft.com/devcontainers/python:1-3.12-bullseye",
+	"image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
 	"features": {
 		"ghcr.io/devcontainers/features/common-utils:2": {
 			"installZsh": true,
@@ -52,7 +52,7 @@
 		"--env-file",
 		"${localWorkspaceFolder}/.env"
 	],
-	"postCreateCommand": "sudo mkdir -p /home/vscode/.local/lib /home/vscode/.local/bin && sudo chown -R vscode /home/vscode/.local/lib /home/vscode/.local/bin && sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y full-upgrade && sudo DEBIAN_FRONTEND=noninteractive apt-get -y autoremove && sudo DEBIAN_FRONTEND=noninteractive apt-get -y autoclean && sudo DEBIAN_FRONTEND=noninteractive apt-get -y install vim && python3 -m pip install --upgrade pip; pip install --user openai; sudo corepack enable && yes | corepack prepare yarn@stable --activate && yarn set version stable; yarn config set nodeLinker node-modules && yarn config set enableGlobalCache true && yarn config set enableImmutableInstalls true && yarn config set --json npmScopes '{\"productioncity\": {\"npmRegistryServer\": \"https://npm.pkg.github.com\", \"npmAlwaysAuth\": true}}' && yarn config set --json npmRegistries \"{\\\"//registry.npmjs.org\\\": {\\\"npmAuthToken\\\": \\\"${NPM_AUTH_TOKEN}\\\"}, \\\"//npm.pkg.github.com\\\": {\\\"npmAuthToken\\\": \\\"${GITHUB_TOKEN}\\\"}}\" && yarn config set --json packageExtensions \"{\\\"@sentry/node@*\\\":{\\\"peerDependencies\\\":{\\\"@prisma/instrumentation\\\":\\\"*\\\"}},\\\"@sentry/opentelemetry@*\\\":{\\\"peerDependencies\\\":{\\\"require-in-the-middle\\\":\\\"*\\\"}}}\" && yarn install --immutable || (yarn install --mode=update-lockfile && yarn install --immutable)",
+	"postCreateCommand": "sudo mkdir -p /home/vscode/.local/lib /home/vscode/.local/bin && sudo chown -R vscode /home/vscode/.local/lib /home/vscode/.local/bin && sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y full-upgrade && sudo DEBIAN_FRONTEND=noninteractive apt-get -y autoremove && sudo DEBIAN_FRONTEND=noninteractive apt-get -y autoclean && sudo DEBIAN_FRONTEND=noninteractive apt-get -y install vim && python3 -m pip install --upgrade pip; pip install --user openai; sudo corepack enable && yes | corepack prepare yarn@stable --activate && yarn set version stable; yarn config set nodeLinker node-modules && yarn config set enableGlobalCache true && yarn config set enableImmutableInstalls true && yarn config set --json npmScopes '{\"productioncity\": {\"npmRegistryServer\": \"https://npm.pkg.github.com\", \"npmAlwaysAuth\": true}}' && yarn config set --json npmRegistries \"{\\\"//registry.npmjs.org\\\": {\\\"npmAuthToken\\\": \\\"${NPM_AUTH_TOKEN}\\\"}, \\\"//npm.pkg.github.com\\\": {\\\"npmAuthToken\\\": \\\"${GITHUB_TOKEN}\\\"}}\" && yarn config set --json packageExtensions \"{\\\"@sentry/node@*\\\":{\\\"peerDependencies\\\":{\\\"@prisma/instrumentation\\\":\\\"*\\\"}},\\\"@sentry/opentelemetry@*\\\":{\\\"peerDependencies\\\":{\\\"require-in-the-middle\\\":\\\"*\\\"}}}\" && yarn install --immutable || (yarn install --mode=update-lockfile && yarn install --immutable) && yarn cf-typegen",
 	"customizations": {
 		"vscode": {
 			"extensions": [

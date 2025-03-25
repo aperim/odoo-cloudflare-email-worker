@@ -2,6 +2,7 @@
 /.llm.json
 /llm.md
 .env
+.dev.vars
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
