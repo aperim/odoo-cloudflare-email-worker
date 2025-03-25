@@ -1,9 +1,9 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
-// README at: https://github.com/devcontainers/templates/tree/main/src/javascript-node
+// README at: https://github.com/devcontainers/templates/tree/main/src/python
 {
-	"name": "Node.js",
+	"name": "Cloudflare Odoo Email Worker",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+	"image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
 	"features": {
 		"ghcr.io/devcontainers/features/common-utils:2": {
 			"installZsh": true,
@@ -16,20 +16,31 @@
 			"userUid": "automatic",
 			"userGid": "automatic"
 		},
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+			"moby": true,
+			"installDockerBuildx": true,
+			"installDockerComposeSwitch": true,
+			"version": "latest",
+			"dockerDashComposeVersion": "v2"
+		},
 		"ghcr.io/devcontainers/features/github-cli:1": {
 			"installDirectlyFromGitHubRelease": true,
 			"version": "latest"
 		},
-		"ghcr.io/eitsupi/devcontainer-features/jq-likes:2": {
-			"allowJqRcVersion": true,
-			"jqVersion": "latest",
-			"yqVersion": "latest",
-			"gojqVersion": "latest",
-			"xqVersion": "latest",
-			"jaqVersion": "latest"
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "latest"
 		},
-		"ghcr.io/devcontainers/features/python:1": {},
+		"ghcr.io/devcontainers-extra/features/typescript:2": {
+			"version": "latest"
+		},
 		"ghcr.io/stuartleeks/dev-container-features/shell-history:0": {},
+		"ghcr.io/devcontainers-extra/features/act:1": {
+			"version": "latest"
+		},
+		"ghcr.io/devcontainers-extra/features/actions-runner:1": {
+			"version": "latest",
+			"dotnetVersion": "latest"
+		},
 		"ghcr.io/devcontainers-extra/features/zsh-plugins:0": {
 			"plugins": "ssh-agent npm",
 			"omzPlugins": "https://github.com/zsh-users/zsh-autosuggestions",
@@ -39,18 +50,26 @@
 	"initializeCommand": "touch ${localWorkspaceFolder}/.env",
 	"runArgs": [
 		"--env-file",
-		".env"
+		"${localWorkspaceFolder}/.env"
 	],
-	"postCreateCommand": "git config --global --add safe.directory /workspaces/odoo-cloudflare-email-worker && sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y full-upgrade && python3 -m venv ~/venv && . ~/venv/bin/activate && pip install --upgrade pip && pip install tqdm openai pyyaml && grep -qxF 'source ~/venv/bin/activate' ~/.zshrc || echo 'source ~/venv/bin/activate' >> ~/.zshrc",
+	"postCreateCommand": "sudo mkdir -p /home/vscode/.local/lib /home/vscode/.local/bin && sudo chown -R vscode /home/vscode/.local/lib /home/vscode/.local/bin && sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y full-upgrade && sudo DEBIAN_FRONTEND=noninteractive apt-get -y autoremove && sudo DEBIAN_FRONTEND=noninteractive apt-get -y autoclean && sudo DEBIAN_FRONTEND=noninteractive apt-get -y install vim && python3 -m pip install --upgrade pip; pip install --user openai; sudo corepack enable && yes | corepack prepare yarn@stable --activate && yarn set version stable; yarn config set nodeLinker node-modules && yarn config set enableGlobalCache true && yarn config set enableImmutableInstalls true && yarn config set --json npmScopes '{\"productioncity\": {\"npmRegistryServer\": \"https://npm.pkg.github.com\", \"npmAlwaysAuth\": true}}' && yarn config set --json npmRegistries \"{\\\"//registry.npmjs.org\\\": {\\\"npmAuthToken\\\": \\\"${NPM_AUTH_TOKEN}\\\"}, \\\"//npm.pkg.github.com\\\": {\\\"npmAuthToken\\\": \\\"${GITHUB_TOKEN}\\\"}}\" && yarn config set --json packageExtensions \"{\\\"@sentry/node@*\\\":{\\\"peerDependencies\\\":{\\\"@prisma/instrumentation\\\":\\\"*\\\"}},\\\"@sentry/opentelemetry@*\\\":{\\\"peerDependencies\\\":{\\\"require-in-the-middle\\\":\\\"*\\\"}}}\" && yarn install --immutable || (yarn install --mode=update-lockfile && yarn install --immutable) && yarn cf-typegen",
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"ms-vscode.vscode-typescript-next",
+				"ms-python.black-formatter",
+				"github.vscode-github-actions",
+				"GitHub.codespaces",
+				"GitHub.remotehub",
+				"ms-python.vscode-pylance",
+				"ms-python.python",
+				"ms-python.debugpy",
 				"GitHub.copilot",
 				"GitHub.vscode-pull-request-github",
 				"GitHub.github-vscode-theme",
 				"GitHub.copilot-chat",
-				"GitHub.remotehub"
+				"ZainChen.json",
+				"redhat.vscode-yaml",
+				"dbaeumer.vscode-eslint"
 			]
 		}
 	}
@@ -59,7 +78,7 @@
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "yarn install",
+	// "postCreateCommand": "pip3 install --user -r requirements.txt",
 	// Configure tool-specific properties.
 	// "customizations": {},
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
