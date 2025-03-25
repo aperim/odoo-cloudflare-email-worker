@@ -3,6 +3,7 @@
 /llm.md
 .env
 .dev.vars
+/worker-configuration.d.ts
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
