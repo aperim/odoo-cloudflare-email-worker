@@ -5,7 +5,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "odoo-email-worker",
-	"main": "src/worker.ts",
+	"main": "src/index.ts",
 	"compatibility_date": "2025-03-21",
 	"observability": {
 		"enabled": true
